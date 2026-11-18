@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>SUPER RACING WORLD - Prototype</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101b22;color:#fff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none}#stage{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#8bd6ee}#game{display:block;width:100%;height:100%;background:#8bd6ee}#hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;pointer-events:none;text-shadow:0 2px 4px #17313b;font-weight:800}.pill{background:#142b35c9;border:1px solid #ffffff55;border-radius:12px;padding:8px 12px;font-size:14px}.bottom{position:fixed;bottom:14px;left:0;right:0;display:flex;justify-content:space-between;align-items:end;padding:0 14px;gap:10px}.cluster{display:flex;gap:9px;align-items:end}.btn{border:2px solid #ffffff99;background:#173b4ddd;color:white;border-radius:16px;min-width:58px;height:58px;font-size:13px;font-weight:800;box-shadow:0 4px 0 #0b2029;touch-action:none}.btn.big{width:76px;height:76px;border-radius:22px;background:#d86b24dd}.btn.special{background:#7245bddd}.btn:active,.btn.down{transform:translateY(3px);box-shadow:0 1px 0 #0b2029}.hint{position:fixed;bottom:104px;left:0;right:0;text-align:center;font-size:12px;color:#fff;text-shadow:0 1px 4px #123;pointer-events:none}.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#07151dcc;padding:24px}.panel{max-width:440px;background:#17313eee;border:1px solid #ffffff55;border-radius:22px;padding:24px;text-align:center;box-shadow:0 18px 60px #0008}.panel h1{font-size:25px;margin:0 0 8px}.panel p{line-height:1.6;color:#d8e8ec}.start{background:#f28b32;color:#1c2630;border:0;border-radius:14px;padding:13px 26px;font-size:17px;font-weight:900}.small{font-size:12px;color:#c5d8dd}
+@media (orientation:portrait){#stage{width:100dvh;height:100vw;transform:rotate(90deg) translateY(-100%);transform-origin:top left}.pill{font-size:12px;padding:6px 9px}.btn{min-width:52px;height:52px}.btn.big{width:66px;height:66px}}
+</style>
+</head><body>
+<div id="stage">
+<canvas id="game"></canvas>
+<div id="hud"><div class="pill" id="lap">LAP 1/1</div><div class="pill" id="stats">COINS 0 · SPEED 0</div><div class="pill" id="state">READY</div></div>
+<div class="hint" id="hint">左右でハンドル / ジャンプ中にもう一度ジャンプでトリック</div>
+<div class="bottom">
+ <div class="cluster"><button class="btn" data-key="left">◀</button><button class="btn" data-key="right">▶</button></div>
+ <div class="cluster"><button class="btn special" data-key="trick">TRICK</button><button class="btn" data-key="jump">JUMP<br>/ GLIDE</button><button class="btn big" data-key="gas">ACCEL</button></div>
+</div>
+<div class="overlay" id="start"><div class="panel"><h1>SUPER RACING WORLD</h1><p>森と山を駆け抜ける、3D風レーシング試作版！<br>コインを集めて、ジャンプ・滑空・空中トリックに挑戦しよう。</p><p class="small">操作：左右で移動、ACCELで加速、JUMPでジャンプ。空中でもう一度JUMPすると滑空、TRICKで着地ブースト！</p><button class="start" id="go">レーススタート！</button></div></div>
+</div>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');let W,H,dpr,started=false;
+function resize(){const stage=document.getElementById('stage');dpr=Math.min(devicePixelRatio||1,1.25);W=stage.clientWidth;H=stage.clientHeight;canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,150));resize();
+const keys={left:false,right:false,gas:false,jump:false,trick:false};
+ document.querySelectorAll('[data-key]').forEach(b=>{let k=b.dataset.key;const on=e=>{e.preventDefault();keys[k]=true;b.classList.add('down')},off=e=>{e.preventDefault();keys[k]=false;b.classList.remove('down')};b.addEventListener('pointerdown',on);['pointerup','pointercancel','pointerleave'].forEach(ev=>b.addEventListener(ev,off));});
+addEventListener('keydown',e=>{let k={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'gas',' ':'jump',Shift:'trick'}[e.key];if(k){keys[k]=true;e.preventDefault()}});addEventListener('keyup',e=>{let k={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'gas',' ':'jump',Shift:'trick'}[e.key];if(k)keys[k]=false});
+let x=0,speed=0,distance=0,coins=0,jumpZ=0,air=false,glide=false,trick=false,boost=0,turn=0,items=[],lastJump=false,lastTrick=false,flash=0;
+function start(){if(started)return;if(screen.orientation&&screen.orientation.lock){screen.orientation.lock('landscape').catch(()=>{});}started=true;document.getElementById('start').style.display='none';last=performance.now();requestAnimationFrame(loop)}
+const goButton=document.getElementById('go');goButton.addEventListener('click',start);goButton.addEventListener('pointerup',e=>{e.preventDefault();start()});
+function poly(points,color){ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(...points[0]);for(let p of points.slice(1))ctx.lineTo(...p);ctx.closePath();ctx.fill()}
+function draw(){let horizon=H*.36;let sky=ctx.createLinearGradient(0,0,0,horizon);sky.addColorStop(0,'#67c6e8');sky.addColorStop(1,'#d7f2e7');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+ // distant stylized mountains
+ for(let i=0;i<7;i++){let mx=(i*W/5-(distance*.05)% (W/5));poly([[mx-150,horizon+30],[mx+20,horizon-130-(i%3)*30],[mx+190,horizon+30]],i%2?'#77ad91':'#609b83')}
+ ctx.fillStyle='#4f9a54';ctx.fillRect(0,horizon,W,H-horizon);
+ // track perspective
+ let curve=Math.sin(distance*.002)*W*.09;let topW=W*.16,bottomW=W*.92;poly([[W/2+curve-topW/2,horizon],[W/2+curve+topW/2,horizon],[W/2+bottomW/2,H],[W/2-bottomW/2,H]],'#4a5054');
+ // shoulders
+ poly([[W/2+curve-topW/2-12,horizon],[W/2+curve-topW/2,horizon],[W/2-bottomW/2,H],[W/2-bottomW/2-24,H]],'#e7e2d2');poly([[W/2+curve+topW/2,horizon],[W/2+curve+topW/2+12,horizon],[W/2+bottomW/2+24,H],[W/2+bottomW/2,H]],'#e7e2d2');
+ // dashed center lines
+ for(let i=0;i<8;i++){let t=((i/12+distance*.0008)%1);let y=horizon+(H-horizon)*t*t;let width=2+t*7;ctx.fillStyle='#f6e9a7';ctx.fillRect(W/2+curve*(1-t)-width/2,y,width,Math.max(2,t*22))}
+ // roadside trees
+ for(let i=0;i<8;i++){let t=((i/14+distance*.00045)%1);let y=horizon+(H-horizon)*t*t;let side=i%2?1:-1;let cx=W/2+curve*(1-t)+side*(W*.12+t*W*.48);let size=12+t*48;ctx.fillStyle='#65452f';ctx.fillRect(cx-size*.12,y-size*.15,size*.24,size*.7);poly([[cx,y-size*1.35],[cx-size*.55,y-size*.2],[cx+size*.55,y-size*.2]],'#236b48');poly([[cx,y-size],[cx-size*.42,y+size*.05],[cx+size*.42,y+size*.05]],'#348858')}
+ // coins ahead
+ for(let i=0;i<5;i++){let t=((i/7+distance*.0007)%1);let y=horizon+(H-horizon)*t*t;let lane=Math.sin(i*2.4)*.45;let cx=W/2+curve*(1-t)+lane*(W*.12+t*W*.35);let r=3+t*10;ctx.fillStyle='#ffd447';ctx.beginPath();ctx.arc(cx,y-r*1.4,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff1a3';ctx.lineWidth=2;ctx.stroke()}
+ // player car
+ let carX=W/2+x*W*.29+curve*.2,baseY=H*.82-jumpZ;let scale=1+jumpZ*.001;ctx.save();ctx.translate(carX,baseY);ctx.scale(scale,scale);
+ // shadow
+ ctx.fillStyle='#193c35aa';ctx.beginPath();ctx.ellipse(0,jumpZ*.7,48,13,0,0,Math.PI*2);ctx.fill();
+ // wheels
+ ctx.fillStyle='#20272b';for(let s of [-1,1]){ctx.fillRect(s*34-9,-9,18,38);ctx.fillRect(s*25-7,-38,14,24)}
+ // body low poly
+ poly([[-39,-30],[-27,-54],[22,-54],[40,-29],[34,0],[-34,0]],'#e65e36');poly([[-27,-54],[-14,-72],[15,-72],[22,-54]],'#f28b45');poly([[-14,-68],[13,-68],[19,-54],[-20,-54]],'#83d9e8');poly([[-34,-25],[34,-25],[27,-3],[-28,-3]],'#b83f2b');
+ ctx.fillStyle='#fff3b0';ctx.fillRect(-34,-28,10,6);ctx.fillRect(24,-28,10,6);ctx.restore();
+ if(flash>0){ctx.fillStyle=`rgba(255,235,100,${flash*.35})`;ctx.fillRect(0,0,W,H)}
+}
+function loop(now){if(!started)return;let dt=Math.min((now-last)/16.67,2);last=now;
+ let accel=keys.gas?.18:.06;speed=Math.min(12,speed+accel*dt);if(!keys.gas)speed=Math.max(2,speed-.035*dt);if(boost>0){speed=Math.min(16,speed+.25*dt);boost-=dt;flash=.8}else flash=Math.max(0,flash-.04*dt);
+ if(keys.left)x-=.035*dt;if(keys.right)x+=.035*dt;x=Math.max(-1.05,Math.min(1.05,x));distance+=speed*dt;
+ if(keys.jump&&!lastJump){if(!air){air=true;glide=false;jumpZ=95}else if(!glide){glide=true}}lastJump=keys.jump;
+ if(air){jumpZ-=glide?0.45*dt:1.8*dt;if(glide)jumpZ=Math.max(24,jumpZ);if(jumpZ<=0){jumpZ=0;air=false;glide=false;if(trick){boost=65;trick=false;document.getElementById('state').textContent='LANDING BOOST!'}else document.getElementById('state').textContent='RACING'}}
+ if(keys.trick&&air&&!lastTrick){trick=true;document.getElementById('state').textContent='TRICK!'}lastTrick=keys.trick;
+ coins=Math.floor(distance/180)%99;
+ draw();document.getElementById('stats').textContent=`COINS ${coins} · SPEED ${Math.round(speed*12)}`;document.getElementById('lap').textContent=`DIST ${Math.floor(distance)} m`;if(air)document.getElementById('state').textContent=glide?'GLIDING':(trick?'TRICK!':'AIRBORNE');
+ requestAnimationFrame(loop)}let last=0;
+</script></body></html>
